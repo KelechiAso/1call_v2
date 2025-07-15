@@ -11,12 +11,12 @@ from typing import Dict, List, Any
 from openai import AsyncOpenAI, Timeout
 
 # --- Setup ---
-print("--- openai_service.py: TOP OF FILE (Two-Call Architecture) ---")
+print("--- openai_service.py: TOP OF FILE (Single-Call Architecture) ---")
 load_dotenv()
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
-    raise ValueError("CRITICAL: OPENAI_API_KEY is not set in openai_service.py.")
+    raise ValueError("CRITICAL: OPENENAI_API_KEY is not set in openai_service.py.")
 
 client = AsyncOpenAI(
     api_key=openai_api_key,
@@ -26,7 +26,7 @@ print("--- openai_service.py: AsyncOpenAI client INITIALIZED ---")
 
 
 # --- Schemas & Tools (Re-used from original file) ---
-# These definitions are crucial for the second call to structure data reliably.
+# These definitions are crucial for the model to structure data reliably for the UI.
 SCHEMA_DATA_H2H = {
     "type": "object", "title": "H2HData", "description": "Data for head-to-head comparisons.",
     "properties": {
@@ -67,15 +67,116 @@ SCHEMA_DATA_TEAM_NEWS = {
                    "news_articles": {"type": "array", "items": {"type": "object", "properties": {"title": {"type": "string"}, "source_name": {"type": ["string", "null"]}, "published_date": {"type": ["string", "null"], "format": "date-time"}, "url": {"type": ["string", "null"], "format": "uri"}, "summary": {"type": "string"}}, "required": ["title", "summary"]}}},
     "required": ["team_name", "news_articles"]
 }
-# (Other schemas like Results, Team Stats, etc. would be included here as in the original file)
+# (Add other schemas if they exist in your original full file)
+SCHEMA_DATA_TEAM_STATS = {
+    "type": "object", "title": "TeamStatsData", "description": "Comprehensive statistics for a specific sports team, possibly broken into sections (e.g., offense, defense).",
+    "properties": {
+        "title": {"type": "string", "description": "A descriptive title for the statistics, e.g., 'Manchester United 2023-2024 Season Stats'."},
+        "stats_type": {"type": "string", "description": "The type of statistics, e.g., 'overall', 'home', 'away', 'attack', 'defense'."},
+        "narrative_summary": {"type": ["string", "null"], "description": "A brief narrative summary or overview of the team's performance based on the stats."},
+        "sections": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "section_title": {"type": "string", "description": "Title of the statistical section (e.g., 'General Stats', 'Attacking', 'Defensive')."},
+                    "key_value_pairs": {
+                        "type": "object",
+                        "description": "Key-value pairs of statistics (e.g., {'Matches Played': 38, 'Goals Scored': 75}).",
+                        "additionalProperties": {"type": ["string", "number", "boolean", "null"]}
+                    }
+                },
+                "required": ["section_title", "key_value_pairs"]
+            }
+        },
+        "disclaimer": {"type": ["string", "null"], "description": "Any relevant disclaimers about the data accuracy or source."}
+    },
+    "required": ["title", "stats_type"]
+}
+
+SCHEMA_DATA_RESULTS_LIST = {
+    "type": "object", "title": "MatchResultsList", "description": "A list of past match results.",
+    "properties": {
+        "title": {"type": "string", "description": "A title for the results list, e.g., 'Recent Premier League Results'."},
+        "matches": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "format": "date", "description": "Date of the match."},
+                    "time": {"type": ["string", "null"], "description": "Time of the match (e.g., '15:00')."},
+                    "home_team_name": {"type": "string"},
+                    "away_team_name": {"type": "string"},
+                    "score": {
+                        "type": "object",
+                        "properties": {
+                            "fulltime": {"type": "object", "properties": {"home": {"type": "integer"}, "away": {"type": "integer"}}},
+                            "halftime": {"type": ["object", "null"], "properties": {"home": {"type": "integer"}, "away": {"type": "integer"}}}
+                        },
+                        "description": "Scores at fulltime and optionally halftime."
+                    },
+                    "competition": {"type": ["string", "null"], "description": "The league or competition."},
+                    "round": {"type": ["string", "null"], "description": "The match round (e.g., 'Matchday 1')."},
+                    "status": {"type": "string", "description": "Match status (e.g., 'Finished')."}
+                },
+                "required": ["date", "home_team_name", "away_team_name", "score", "status"]
+            }
+        }
+    },
+    "required": ["matches"]
+}
+
+SCHEMA_DATA_LIVE_MATCH_FEED = {
+    "type": "object", "title": "LiveMatchFeedData", "description": "Real-time updates for a live sports match.",
+    "properties": {
+        "match_id": {"type": "string", "description": "Unique identifier for the match."},
+        "home_team_name": {"type": "string"},
+        "away_team_name": {"type": "string"},
+        "home_team_score": {"type": "integer"},
+        "away_team_score": {"type": "integer"},
+        "current_minute": {"type": ["integer", "null"], "description": "Current minute of the match."},
+        "status_description": {"type": "string", "description": "e.g., 'Half Time', 'Live', 'Full Time'."},
+        "competition": {"type": ["string", "null"]},
+        "venue": {"type": ["string", "null"]},
+        "key_events": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "minute": {"type": "integer"},
+                    "type": {"type": "string", "enum": ["goal", "yellow card", "red card", "substitution", "penalty"]},
+                    "player_name": {"type": "string"},
+                    "team_name": {"type": "string"},
+                    "detail": {"type": ["string", "null"], "description": "e.g., 'Penalty Goal', 'Own Goal'."}
+                },
+                "required": ["minute", "type", "player_name", "team_name"]
+            },
+            "description": "Chronological list of key events."
+        },
+        "live_stats": {
+            "type": "object",
+            "description": "Key live statistics (e.g., 'Possession', 'Shots on Target').",
+            "additionalProperties": {"type": ["string", "number", "null"]}
+        },
+        "narrative_updates": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Short textual updates about the match flow."
+        }
+    },
+    "required": ["match_id", "home_team_name", "away_team_name", "home_team_score", "away_team_score", "status_description"]
+}
 
 TOOLS_AVAILABLE = [
-    {"type": "function", "function": {"name": "present_h2h_comparison", "description": "Presents a head-to-head comparison between two teams.", "parameters": SCHEMA_DATA_H2H}},
-    {"type": "function", "function": {"name": "display_standings_table", "description": "Displays a league standings table.", "parameters": SCHEMA_DATA_STANDINGS_TABLE}},
-    {"type": "function", "function": {"name": "show_match_schedule", "description": "Shows a schedule of upcoming matches for a specific day or period.", "parameters": SCHEMA_DATA_MATCH_SCHEDULE_TABLE}},
-    {"type": "function", "function": {"name": "get_player_profile", "description": "Retrieves detailed information about a sports player.", "parameters": SCHEMA_DATA_PLAYER_PROFILE}},
-    {"type": "function", "function": {"name": "get_team_news", "description": "Fetches latest news articles for a specific sports team.", "parameters": SCHEMA_DATA_TEAM_NEWS}},
-    # (The full list of tools from the original file would be here)
+    {"type": "function", "function": {"name": "present_h2h_comparison", "description": "Presents a head-to-head comparison between two teams. Use this when the user asks for historical match-ups, rivalry statistics, or past results between two specific teams.", "parameters": SCHEMA_DATA_H2H}},
+    {"type": "function", "function": {"name": "display_standings_table", "description": "Displays a league standings table. Use this when the user asks for league tables, positions, or current rankings in a competition.", "parameters": SCHEMA_DATA_STANDINGS_TABLE}},
+    {"type": "function", "function": {"name": "show_match_schedule", "description": "Shows a schedule of upcoming matches for a specific day or period. Use this when the user asks for 'what matches are on today', 'upcoming games', or a schedule for a team/league.", "parameters": SCHEMA_DATA_MATCH_SCHEDULE_TABLE}},
+    {"type": "function", "function": {"name": "get_player_profile", "description": "Retrieves detailed information about a sports player. Use this when the user asks for a player's bio, stats, team, nationality, or career details.", "parameters": SCHEMA_DATA_PLAYER_PROFILE}},
+    {"type": "function", "function": {"name": "get_team_news", "description": "Fetches latest news articles for a specific sports team. Use this when the user asks for recent news, updates, or headlines about a team.", "parameters": SCHEMA_DATA_TEAM_NEWS}},
+    {"type": "function", "function": {"name": "display_team_stats", "description": "Displays comprehensive statistics for a specific sports team. Use this when the user asks for team performance, attacking/defensive stats, or general statistics for a club.", "parameters": SCHEMA_DATA_TEAM_STATS}},
+    {"type": "function", "function": {"name": "show_match_results", "description": "Shows a list of past match results. Use this when the user asks for recent scores, results of completed games, or a specific match outcome.", "parameters": SCHEMA_DATA_RESULTS_LIST}},
+    {"type": "function", "function": {"name": "display_live_match_feed", "description": "Provides real-time updates and key events for a live sports match. Use this when the user asks for live scores, current match status, or real-time commentary.", "parameters": SCHEMA_DATA_LIVE_MATCH_FEED}},
+    # Added example comments to tool descriptions for clarity
 ]
 
 TOOL_NAME_TO_COMPONENT_TYPE = {
@@ -84,164 +185,110 @@ TOOL_NAME_TO_COMPONENT_TYPE = {
     "show_match_schedule": "match_schedule_table",
     "get_player_profile": "player_profile_card",
     "get_team_news": "news_article_list",
-    # (The full mapping from the original file would be here)
+    "display_team_stats": "team_stats", # Added mapping for new tool
+    "show_match_results": "results_list", # Added mapping for new tool
+    "display_live_match_feed": "live_match_feed", # Added mapping for new tool
+    # (The full mapping from your original file with additional tools)
 }
 print("--- openai_service.py: Schemas and Tools DEFINED ---")
 
 
-async def gather_real_time_data(user_query: str, conversation_history: List[Dict[str, str]]) -> str:
+async def process_user_query(user_query: str, conversation_history: List[Dict[str, str]]) -> Dict[str, Any]:
     """
-    First Call: Uses gpt-4o with search to gather comprehensive, real-time data.
+    Single Call: Uses gpt-4o-search-preview to both gather data and generate a
+    friendly reply and structured UI data using tools, removing external links.
     """
-    print(f"--- Step 1: GATHERING real-time data for query: '{user_query[:60]}...' ---")
-    
+    print(f"--- Processing query with SINGLE CALL: '{user_query[:60]}...' ---")
+
+    # Define a default response in case of failure or if no specific tool is called
+    final_response = {
+        "reply": "I'm sorry, I couldn't find the information you were looking for or process your request.",
+        "ui_data": {"component_type": "generic_text", "data": {}}
+    }
+
     system_prompt = """
-    You are a highly-capable Sports Information Gatherer.
-    Your task is to fully understand the user's query in the context of the conversation history.
-    Then, use your search capabilities to find the most relevant, accurate, and up-to-date information.
-    Compile all the factual information you find—such as statistics, schedules, player details, team news, head-to-head records, or live scores—into a single, comprehensive text block.
-    Do NOT format this as a chat response. Do NOT use tools. Just return the raw, gathered data.
-    If the query is conversational (e.g., "hello", "who are you?", "thanks") or clearly out-of-scope (e.g., "what is the capital of France?"), state that no data fetching is required.
+    You are GameNerd, an expert sports AI assistant. Your goal is to be helpful, informative, and concise.
+    You have integrated search capabilities to find real-time, comprehensive, and up-to-date sports information.
+
+    Your tasks are:
+    1.  **Understand the User's Intent:** Analyze the user's query and the conversation history to determine what sports information they are seeking.
+    2.  **Gather Data (Implicit Search):** Use your integrated search to find all necessary factual information (statistics, schedules, player details, news, live scores, etc.).
+    3.  **Generate a Friendly Reply:** Formulate a concise and helpful text `reply` based on the gathered information that directly answers the user's query.
+        * **CRITICAL:** Your text `reply` MUST NOT contain any markdown links, URLs, or explicit references to sources (e.g., "According to Wikipedia", "from ESPN.com"). Just present the information naturally.
+    4.  **Select and Populate Tool (if applicable):** If the query is data-related and the gathered information can be structured for a richer UI experience, select the SINGLE most appropriate `tool` from the available list.
+        * Populate ALL required and relevant optional arguments for your chosen tool completely and accurately using the gathered data. Ensure the data matches the schema precisely.
+        * If no tool is suitable (e.g., a conversational query like "hello", "who are you?", or an out-of-scope question), do NOT call a tool; simply provide a conversational text `reply`.
+
+    Conversation Examples & Guidelines:
+    - If a user asks "Who are you?", introduce yourself as GameNerd, a sports and gaming AI.
+    - If a user asks a non-sports question, politely state you only handle sports and gaming.
+    - If information is not found, state that clearly in your `reply` and do not call a tool.
+    - Prioritize using tools for structured data (tables, lists, profiles) over just text if the information clearly fits a tool's purpose.
+    - When providing a text `reply` alongside a tool, ensure the `reply` summarizes or introduces the structured data.
     """
-    
+
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(conversation_history[-6:]) # Use last 3 turns for context
     messages.append({"role": "user", "content": user_query})
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-search-preview", # Using gpt-4o for its advanced reasoning and integrated search
+            model="gpt-4o-search-preview", # Use this model for both search and tool calling
             messages=messages,
-        )
-        gathered_data = response.choices[0].message.content
-        print(f">>> Data gathering complete. Snippet: {gathered_data[:200]}...")
-        return gathered_data
-    except Exception as e:
-        print(f"!!! ERROR during Step 1 (gather_real_time_data): {e}")
-        traceback.print_exc()
-        return f"Error: Could not gather information due to an internal error: {str(e)}"
-
-
-async def generate_final_response_with_tools(
-    user_query: str,
-    conversation_history: List[Dict[str, str]],
-    gathered_data: str
-) -> Dict[str, Any]:
-    """
-    Second Call: Uses the gathered data to generate a friendly reply and structured UI data using tools.
-    """
-    print("--- Step 2: GENERATING final response and UI data ---")
-    
-    # Define a default response in case of failure
-    final_response = {
-        "reply": "I'm sorry, I had trouble processing the sports information. Please try rephrasing your request.",
-        "ui_data": {"component_type": "generic_text", "data": {}}
-    }
-
-    # Handle cases where data gathering failed or was not needed
-    if "no data fetching is required" in gathered_data.lower() or gathered_data.startswith("Error:"):
-        # Let the model generate a conversational reply without tools
-        print(">>> No data fetched or required. Generating a conversational reply.")
-        system_prompt = """
-        You are GameNerd, a friendly and helpful sports AI assistant.
-        Based on the user's query and conversation history, provide a direct, conversational response.
-        If the user is asking about you, introduce yourself.
-        If the query is out of scope, politely state that you only handle sports and gaming topics.
-        Do NOT use any tools. Do NOT include markdown links or URLs.
-        """
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(conversation_history[-6:])
-        messages.append({"role": "user", "content": user_query})
-    else:
-        # Prepare the main prompt for data presentation and tool use
-        print(">>> Data was gathered. Preparing to generate response with tools.")
-        system_prompt = """
-        You are GameNerd, an expert sports AI assistant.
-        Your goal is to present information clearly to the user. You have been provided with a block of raw data.
-
-        Your tasks are:
-        1. Write a friendly, concise, and helpful text `reply` to the user's query based on the provided data.
-        2. Analyze the provided data and the user's original request.
-        3. Select the SINGLE most appropriate `tool` from the available list to structure the key information for a UI display.
-        4. Populate the arguments for your chosen tool completely and accurately using the provided data.
-        
-        CRITICAL:
-        - You MUST call a tool if the query is data-related (schedules, stats, etc.).
-        - Your text `reply` must NOT contain any markdown links or URLs. Mention sources by name only if necessary.
-        """
-        user_content = f"""
-        Here is the user's original query: "{user_query}"
-
-        Here is the raw information I gathered for you:
-        <DATA_BLOCK>
-        {gathered_data}
-        </DATA_BLOCK>
-
-        Now, please perform your tasks as instructed.
-        """
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
-        ]
-
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            tools=TOOLS_AVAILABLE if "no data fetching" not in gathered_data.lower() else None,
-            tool_choice="auto" if "no data fetching" not in gathered_data.lower() else None,
-            temperature=0.2,
+            tools=TOOLS_AVAILABLE, # Always provide tools, let the model decide
+            tool_choice="auto",    # Model decides if it should use a tool or not
+            temperature=0.2,       # Keep temperature low for factual consistency and structured output
         )
 
         response_message = response.choices[0].message
-        
-        # Set the text reply
+
+        # 1. Set the text reply
         if response_message.content:
-            # Simple link stripping as a safeguard
-            final_response["reply"] = re.sub(r'\[(.*?)\]\(http[s]?://.*?\)', r'\1', response_message.content)
+            # Safely strip any lingering markdown links or URLs from the content
+            # This regex will remove [link text](url) and bare http/https URLs
+            cleaned_reply = re.sub(r'\[(.*?)\]\(http[s]?://.*?\)|http[s]?://[^\s]+', r'\1', response_message.content)
+            final_response["reply"] = cleaned_reply.strip()
         
-        # Process tool call for structured UI data
+        # 2. Process tool call for structured UI data
         if response_message.tool_calls:
+            # Assume only one tool call for simplicity based on prompt's "SINGLE most appropriate tool"
             tool_call = response_message.tool_calls[0]
             function_name = tool_call.function.name
-            function_args = json.loads(tool_call.function.arguments)
+            
+            try:
+                function_args = json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError as e:
+                print(f"!!! ERROR: Could not parse function arguments for tool '{function_name}': {e}")
+                print(f"Raw arguments: {tool_call.function.arguments}")
+                # Fallback if args are malformed, but try to still provide a text reply if available
+                final_response["reply"] = final_response["reply"] or "I tried to get some structured data, but there was an issue formatting it."
+                final_response["ui_data"] = {"component_type": "generic_text", "data": {"error": f"Failed to parse UI data for {function_name}."}}
+                return final_response # Exit early if args are unusable
 
             component_type = TOOL_NAME_TO_COMPONENT_TYPE.get(function_name, "generic_text")
             final_response["ui_data"] = {
                 "component_type": component_type,
                 "data": function_args
             }
-            # If the LLM didn't provide a text reply, create a default one
-            if not response_message.content:
+            # If the LLM made a tool call but didn't provide a text reply, create a default one
+            if not final_response["reply"]:
                 final_response["reply"] = "Certainly! Here is the information you requested."
             print(f">>> UI component generated: '{component_type}'")
         else:
-            print(">>> No tool call was made. Response is text-only.")
-            # If no tool was called and no text was generated, use a fallback.
-            if not response_message.content:
-                 final_response["reply"] = "I've processed your request."
+            print(">>> No tool call was made. Response is text-only or conversational.")
+            # If no tool was called and no text was generated (e.g., initial parsing error), use a fallback.
+            if not final_response["reply"]:
+                final_response["reply"] = "I've processed your request, but I don't have specific data to show right now."
 
         return final_response
 
     except Exception as e:
-        print(f"!!! UNEXPECTED ERROR in Step 2 (generate_final_response_with_tools): {e}")
+        print(f"!!! UNEXPECTED ERROR in single-call process_user_query: {e}")
         traceback.print_exc()
-        # Return the default error response defined at the start of the function
-        final_response["reply"] = f"An unexpected server error occurred while formatting the response: {str(e)}"
-        final_response["ui_data"]["data"]["error"] = str(e)
-        return final_response
-
-
-async def process_user_query(user_query: str, conversation_history: List[Dict[str, str]]) -> Dict[str, Any]:
-    """
-    Main orchestrator for the two-call process.
-    """
-    # Step 1: Gather data
-    gathered_data = await gather_real_time_data(user_query, conversation_history)
-    
-    # Step 2: Generate the final response using the gathered data
-    final_result = await generate_final_response_with_tools(user_query, conversation_history, gathered_data)
-    
-    return final_result
+        # Return a more specific error for the user
+        return {
+            "reply": f"I encountered a problem processing your request. Please try again. ({type(e).__name__})",
+            "ui_data": {"component_type": "generic_text", "data": {"error": f"Internal server error: {type(e).__name__} - {str(e)}"}}
+        }
 
 print("--- openai_service.py: All functions DEFINED. Ready. ---")
