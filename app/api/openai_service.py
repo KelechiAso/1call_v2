@@ -79,7 +79,7 @@ async def process_user_query(user_query: str, conversation_history: List[Dict[st
             model="gpt-4o-search-preview", # Use this model for its search capabilities
             messages=messages,
             # Removed tools and tool_choice as we no longer want structured output via function calling
-            temperature=0.2, # Keep temperature low for factual consistency
+            #temperature=0.2, # Keep temperature low for factual consistency
         )
 
         response_message = response.choices[0].message
