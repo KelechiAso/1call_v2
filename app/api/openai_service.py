@@ -96,7 +96,16 @@ async def process_user_query(user_query: str, conversation_history: List[Dict[st
         if response_message.content:
             # Robustly strip any lingering markdown links or bare URLs from the content
             # This regex removes [link text](url) and bare http/https URLs
-            cleaned_reply = re.sub(r'\[(.*?)\]\(http[s]?://.*?\)|http[s]?://[^\s]+', r'\1', response_message.content)
+            cleaned_reply = re.sub(
+                r'\[(.*?)\]\(http[s]?://.*?\)|'  # Markdown links
+                r'http[s]?://[^\s]+|'           # Bare URLs
+                r'\(\s*(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?\s*\)|\(sportshistori\.com\)', # Parenthetical domains like (fourfourtwo.com) or (whattowatch.com) or (sportshistori.com)
+                r'\1', # For Markdown links, keep the captured group 1 (the link text). For other patterns, it effectively removes them.
+                response_message.content,
+                flags=re.IGNORECASE # Ignore case for domain names
+            )
+            # A final clean-up to remove any extra spaces that might result from removals
+            cleaned_reply = re.sub(r'\s{2,}', ' ', cleaned_reply).strip()
             final_response["reply"] = cleaned_reply.strip()
         else:
             # Fallback if the model somehow returns empty content
