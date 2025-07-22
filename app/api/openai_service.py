@@ -19,6 +19,7 @@ if not openai_api_key:
     raise ValueError("CRITICAL: OPENAI_API_KEY is not set in openai_service.py.")
 
 client = AsyncOpenAI(
+    
     api_key=openai_api_key,
     timeout=Timeout(180.0, connect=15.0) # Increased timeout for potentially longer calls
 )
