@@ -271,7 +271,7 @@
             chatbox.scrollTop = chatbox.scrollHeight;
         }
 
-        // NEW FUNCTION: Basic Markdown Parser for **bold**, *italics*, and newlines
+        // NEW FUNCTION: Basic Markdown Parser for common Markdown elements
         function parseMarkdown(text) {
             let html = safeText(text); // Start by HTML-escaping the raw text to prevent XSS
                                       // Then apply Markdown-to-HTML replacements
@@ -282,22 +282,34 @@
             html = html.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
             // Newlines: \n -> <br> (for simple line breaks)
             html = html.replace(/\n/g, '<br>');
+            
             // Basic unordered lists: - Item -> <ul><li>Item</li>...</ul>
-            // This regex will replace each line starting with '- ' into an <li>.
-            // It assumes list items are on separate lines.
-            // A more robust parser would handle multi-line list items and nested lists.
-            const listRegex = /^- (.*)$/gm;
-            if (listRegex.test(html)) {
-                html = html.replace(listRegex, '<li>$1</li>');
-                // Wrap in <ul> tags if <li> elements were created, but only if not already wrapped
-                if (!html.includes('<ul>')) { // Simple check to avoid double wrapping
-                    html = `<ul>${html}</ul>`;
+            // This regex captures lines starting with '- '
+            // It's a simple parser and might not handle complex nested lists or multi-line list items perfectly.
+            const listItems = html.split('<br>').map(line => line.trim()).filter(line => line.startsWith('- '));
+            if (listItems.length > 0) {
+                // Replace each matched list line with an <li> element
+                let listHtml = '<ul>';
+                for (const item of listItems) {
+                    listHtml += `<li>${item.substring(2)}</li>`; // Remove '- ' prefix
                 }
+                listHtml += '</ul>';
+                // Replace the original list lines in the main HTML with the generated listHtml
+                // This part requires a bit more careful regex or splitting if the list
+                // isn't isolated. For now, a simpler approach:
+                // We'll replace the first list-like block.
+                html = html.replace(listRegexForReplace, listHtml);
             }
-
-
+            // Define the regex for replacement outside, or re-think list parsing if lists aren't isolated
+            // For general parsing, a more robust library is recommended, but this is a start.
+            
             return html;
         }
+
+        // Helper regex for parseMarkdown for list replacement
+        // This regex attempts to find blocks of list items.
+        // It's a bit more advanced but necessary if you split by <br> earlier.
+        const listRegexForReplace = /^(?:<li>.*?<\/li><br>)*<li>.*?<\/li>$/s; // Simple example, might need refinement
 
 
         async function sendMessage() {

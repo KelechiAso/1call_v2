@@ -51,7 +51,7 @@ async def process_user_query(user_query: str, conversation_history: List[Dict[st
         "ui_data": {"component_type": "generic_text", "data": {}} # ui_data will always be generic_text
     }
 
-    ssystem_prompt = """
+    system_prompt = """
     You are GameNerd, an expert sports AI assistant. Your goal is to be helpful, informative, concise, and easy to read.
     You have integrated search capabilities to find real-time, comprehensive, and up-to-date sports information.
 
