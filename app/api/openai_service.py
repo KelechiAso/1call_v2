@@ -36,7 +36,7 @@ async def stream_llm_response(user_query: str) -> AsyncGenerator[str, None]:
     try:
         # Use `client.chat.completions.create` with `stream=True`
         stream = await client.chat.completions.create(
-            model="gpt-4o-search-preview-mini",
+            model="gpt-4o-mini-search-preview",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_query}
