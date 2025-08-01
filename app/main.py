@@ -12,7 +12,7 @@ from typing import Dict, List, Any, AsyncGenerator
 
 # --- Service Import ---
 # We will use a separate service file for clarity
-from .api.openai_service_stream import stream_llm_response
+from .api.openai_service import stream_llm_response
 
 # --- App Setup ---
 app = FastAPI(
