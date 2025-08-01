@@ -26,6 +26,16 @@ client = AsyncOpenAI(
 print("--- openai_service.py: AsyncOpenAI client INITIALIZED ---")
 
 # --- NO SCHEMAS & TOOLS ARE NEEDED FOR TEXT-ONLY RESPONSES ---
+# We are explicitly moving away from structured tool calls.
+# The following variables will be removed or not used:
+# SCHEMA_DATA_H2H, SCHEMA_DATA_MATCH_SCHEDULE_TABLE, SCHEMA_DATA_STANDINGS_TABLE,
+# SCHEMA_DATA_PLAYER_PROFILE, SCHEMA_DATA_TEAM_NEWS, SCHEMA_DATA_TEAM_STATS,
+# SCHEMA_DATA_RESULTS_LIST, SCHEMA_DATA_LIVE_MATCH_FEED
+# TOOLS_AVAILABLE
+# TOOL_NAME_TO_COMPONENT_TYPE
+
+# You can either comment them out or delete them entirely if they are no longer used anywhere else.
+# For clarity in this explanation, I'll remove them.
 print("--- openai_service.py: Schemas and Tools REMOVED (for text-only output) ---")
 
 
@@ -77,7 +87,7 @@ async def process_user_query(user_query: str, conversation_history: List[Dict[st
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini-search-preview", # Use this model for its search capabilities
+            model="gpt-4o-search-preview", # Use this model for its search capabilities
             messages=messages,
             # Removed tools and tool_choice as we no longer want structured output via function calling
             #temperature=0.2, # Keep temperature low for factual consistency
@@ -87,18 +97,18 @@ async def process_user_query(user_query: str, conversation_history: List[Dict[st
 
         # Set the text reply
         if response_message.content:
-            # EDITED: A more robust and comprehensive regex to remove a wider range of URL and source references.
+            # Robustly strip any lingering markdown links or bare URLs from the content
+            # This regex removes [link text](url) and bare http/https URLs
             cleaned_reply = re.sub(
                 r'\[(.*?)\]\(http[s]?://.*?\)|'              # Markdown links like [text](url)
                 r'http[s]?://[^\s]+|'                        # Bare URLs
                 r'\(\s*(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?\s*\)|'  # Parenthetical domains like (reuters.com)
                 r'\(Source:.*?\)|'                           # Parenthetical source references
-                
+                #r'\',              # Citations like
                 r'',
                 response_message.content,
                 flags=re.IGNORECASE | re.DOTALL # Ignore case and match across lines
             )
-            
             # A final clean-up to remove any extra spaces that might result from removals
             cleaned_reply = re.sub(r'\s{2,}', ' ', cleaned_reply).strip()
             final_response["reply"] = cleaned_reply.strip()
