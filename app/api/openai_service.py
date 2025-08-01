@@ -110,7 +110,7 @@ async def process_user_query(user_query: str, conversation_history: List[Dict[st
                 r'http[s]?://[^\s]+|'                        # Bare URLs
                 r'\(\s*(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?\s*\)|'  # Parenthetical domains like (reuters.com)
                 r'\(Source:.*?\)|'                           # Parenthetical source references
-                            # Citations like
+                r"'(.*?)'",              # Citations like
                 r'',
                 response_message.content,
                 flags=re.IGNORECASE | re.DOTALL # Ignore case and match across lines
