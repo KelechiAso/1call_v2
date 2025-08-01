@@ -139,7 +139,41 @@
         .user-message { background-color: #2a392a; color: #e0f0e0; margin-left: auto; border-bottom-right-radius: 5px; }
         .bot-message { background-color: #2a2c3b; color: #d0d0e0; margin-right: auto; border-bottom-left-radius: 5px; }
         .error-message { color: #ff8a80; /* Softer red */ font-style: italic; border: 1px solid #ff8a80; background-color: #3c2f2f; }
+        
+        /* New styling for structured bot messages to make them more modular */
+        /* --- START OF NEW/EDITED CSS --- */
+        .bot-message-structured {
+            background-color: #2a2c3b;
+            color: #d0d0e0;
+            margin-right: auto;
+            padding: 15px; /* More padding for a card-like look */
+            border-bottom-left-radius: 5px;
+        }
 
+        .bot-message-structured h3 { /* Use H3 for sport titles */
+            color: #4CAF50;
+            border-bottom: 1px solid #3a3a5a;
+            padding-bottom: 5px;
+            margin-top: 10px;
+        }
+        
+        .bot-message-structured ul {
+            list-style: none; /* Remove default bullet points */
+            padding: 0;
+            margin: 10px 0;
+        }
+
+        .bot-message-structured ul li {
+            padding: 5px 0;
+            border-left: 2px solid #5a5a70;
+            padding-left: 10px;
+            margin-bottom: 5px;
+        }
+
+        .bot-message-structured ul li strong {
+            color: #e0e0e0;
+        }
+        /* --- END OF NEW/EDITED CSS --- */
 
         #loadingIndicator { display: none; text-align: center; padding: 10px; color: #aaa; font-style: italic; }
 
@@ -234,7 +268,7 @@
         const uiComponentsDiv = document.getElementById('ui-components');
         const sendButton = document.getElementById('sendButton');
         const loadingIndicator = document.getElementById('loadingIndicator');
-        const openChatButton = document.getElementById('openChatButton');
+        const openChatButton = document.getElementById('openChatButton'); // This ID no longer exists in the HTML body
 
 
         // Generate a simple session ID for history tracking
@@ -248,7 +282,7 @@
                 sendMessage();
             }
         });
-        if(openChatButton){
+        if(openChatButton){ // Make assistance button focus on input
             openChatButton.addEventListener('click', () => {
                 userInput.focus();
             });
@@ -256,14 +290,22 @@
 
 
         // --- Core Functions ---
-        // MODIFIED: Use innerHTML and parseMarkdown function
-        function appendMessage(text, sender = 'bot', isError = false) {
+        // EDITED: This function now accepts an optional parameter to render as HTML
+        function appendMessage(content, sender = 'bot', isError = false, isHtml = false) {
             const msgDiv = document.createElement('div');
-            // Process Markdown before setting innerHTML
-            const processedText = parseMarkdown(text);
-            msgDiv.innerHTML = processedText; // <-- CHANGE HERE
-            msgDiv.classList.add('message');
-            msgDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
+            
+            if (isHtml) {
+                // Use innerHTML for trusted HTML content
+                msgDiv.innerHTML = content;
+                // Add new class for structured styling
+                msgDiv.classList.add('message', 'bot-message-structured');
+            } else {
+                // Use textContent for plain text messages for security
+                msgDiv.textContent = content;
+                msgDiv.classList.add('message');
+                msgDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
+            }
+
             if (isError) {
                 msgDiv.classList.add('error-message');
             }
@@ -271,46 +313,60 @@
             chatbox.scrollTop = chatbox.scrollHeight;
         }
 
-        // NEW FUNCTION: Basic Markdown Parser for common Markdown elements
-        function parseMarkdown(text) {
-            let html = safeText(text); // Start by HTML-escaping the raw text to prevent XSS
-                                      // Then apply Markdown-to-HTML replacements
-            
-            // Bold: **text** -> <strong>text</strong>
-            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            // Italics: *text* or _text_ -> <em>text</em>
-            html = html.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
-            // Newlines: \n -> <br> (for simple line breaks)
-            html = html.replace(/\n/g, '<br>');
-            
-            // Basic unordered lists: - Item -> <ul><li>Item</li>...</ul>
-            // This regex captures lines starting with '- '
-            // It's a simple parser and might not handle complex nested lists or multi-line list items perfectly.
-            const listItems = html.split('<br>').map(line => line.trim()).filter(line => line.startsWith('- '));
-            if (listItems.length > 0) {
-                // Replace each matched list line with an <li> element
-                let listHtml = '<ul>';
-                for (const item of listItems) {
-                    listHtml += `<li>${item.substring(2)}</li>`; // Remove '- ' prefix
+        // NEW FUNCTION: A function to parse your LLM text response into HTML
+        // This is the core logic to create the modular output you want.
+        function parseAndFormatLLMResponse(text) {
+            const lines = text.split('\n');
+            let html = '';
+            let currentList = [];
+            let inList = false;
+
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+
+                // Check for headings (e.g., "**Golf - Wyndham Championship**")
+                if (trimmedLine.startsWith('**') && trimmedLine.endsWith('**')) {
+                    if (inList) {
+                        html += `<ul>${currentList.map(item => `<li>${item}</li>`).join('')}</ul>`;
+                        currentList = [];
+                        inList = false;
+                    }
+                    html += `<h3>${safeText(trimmedLine.slice(2, -2))}</h3>`;
+                } 
+                // Check for bullet points (e.g., "* Description:")
+                else if (trimmedLine.startsWith('*')) {
+                    const content = safeText(trimmedLine.slice(1).trim());
+                    currentList.push(content);
+                    inList = true;
                 }
-                listHtml += '</ul>';
-                // Replace the original list lines in the main HTML with the generated listHtml
-                // This part requires a bit more careful regex or splitting if the list
-                // isn't isolated. For now, a simpler approach:
-                // We'll replace the first list-like block.
-                html = html.replace(listRegexForReplace, listHtml);
+                // Check for horizontal rules (e.g., "***")
+                else if (trimmedLine === '***') {
+                    if (inList) {
+                        html += `<ul>${currentList.map(item => `<li>${item}</li>`).join('')}</ul>`;
+                        currentList = [];
+                        inList = false;
+                    }
+                    html += '<hr>';
+                }
+                // Handle regular paragraphs
+                else if (trimmedLine !== '') {
+                     if (inList) {
+                        html += `<ul>${currentList.map(item => `<li>${item}</li>`).join('')}</ul>`;
+                        currentList = [];
+                        inList = false;
+                    }
+                    html += `<p>${safeText(trimmedLine)}</p>`;
+                }
             }
-            // Define the regex for replacement outside, or re-think list parsing if lists aren't isolated
-            // For general parsing, a more robust library is recommended, but this is a start.
-            
+
+            // Close any remaining list
+            if (inList) {
+                html += `<ul>${currentList.map(item => `<li>${item}</li>`).join('')}</ul>`;
+            }
+
             return html;
         }
-
-        // Helper regex for parseMarkdown for list replacement
-        // This regex attempts to find blocks of list items.
-        // It's a bit more advanced but necessary if you split by <br> earlier.
-        const listRegexForReplace = /^(?:<li>.*?<\/li><br>)*<li>.*?<\/li>$/s; // Simple example, might need refinement
-
+        // --- END OF NEW FUNCTION ---
 
         async function sendMessage() {
             const query = userInput.value.trim();
@@ -359,7 +415,9 @@
                 console.log("Data received and parsed from /chat:", data);
 
                 if (data && typeof data.reply !== 'undefined') {
-                    appendMessage(data.reply, 'bot');
+                    // EDITED: Now using the new `parseAndFormatLLMResponse` function
+                    const formattedHtml = parseAndFormatLLMResponse(data.reply);
+                    appendMessage(formattedHtml, 'bot', false, true); // The last parameter `true` tells it to render as HTML
                 } else {
                     console.error("Parsed data is missing 'reply' field or data itself is null/undefined:", data);
                     appendMessage("Received an incomplete response structure from the bot.", 'bot', true);
@@ -384,10 +442,11 @@
             }
         }
 
-        // renderUiComponent remains mostly the same,
-        // but its 'generic_text' case now uses parseMarkdown too.
+        // ... (rest of your functions for renderUiComponent, safeText, and the various generate...HTML functions remain unchanged)
+        
         function renderUiComponent(uiData) {
-            uiComponentsDiv.innerHTML = ''; // Clear previous UI content
+            // ... (rest of your renderUiComponent function is unchanged)
+            uiComponentsDiv.innerHTML = ''; 
 
             if (!uiData || typeof uiData.component_type === 'undefined' || typeof uiData.data === 'undefined') {
                 console.warn("Received invalid or empty ui_data structure for rendering:", uiData);
@@ -398,81 +457,79 @@
             console.log("Attempting to render UI Component Type:", uiData.component_type, "with data:", JSON.stringify(uiData.data, null, 2));
 
             try {
-                switch (uiData.component_type) {
-                    case 'h2h_comparison_table':
-                        uiComponentsDiv.innerHTML = generateH2HTableHTML(uiData.data);
-                        break;
-                    case 'match_schedule_table':
-                        uiComponentsDiv.innerHTML = generateScheduleTableHTML(uiData.data);
-                        break;
-                    case 'standings_table':
-                        uiComponentsDiv.innerHTML = generateStandingsTableHTML(uiData.data);
-                        break;
-                    case 'team_stats':
-                        uiComponentsDiv.innerHTML = generateTeamStatsHTML(uiData.data);
-                        break;
-                    case 'results_list':
-                            uiComponentsDiv.innerHTML = generateResultsListHTML(uiData.data);
+                    switch (uiData.component_type) {
+                        case 'h2h_comparison_table':
+                            uiComponentsDiv.innerHTML = generateH2HTableHTML(uiData.data);
                             break;
-                    case 'live_match_feed':
-                            uiComponentsDiv.innerHTML = generateLiveMatchFeedHTML(uiData.data);
+                        case 'match_schedule_table':
+                            uiComponentsDiv.innerHTML = generateScheduleTableHTML(uiData.data);
                             break;
-                    case 'match_lineups_display':
-                            uiComponentsDiv.innerHTML = generateMatchLineupsHTML(uiData.data);
+                        case 'standings_table':
+                            uiComponentsDiv.innerHTML = generateStandingsTableHTML(uiData.data);
                             break;
-                    case 'top_performers_list':
-                            uiComponentsDiv.innerHTML = generateTopPerformersHTML(uiData.data);
+                        case 'team_stats':
+                            uiComponentsDiv.innerHTML = generateTeamStatsHTML(uiData.data);
                             break;
-                    case 'player_profile_card':
-                            uiComponentsDiv.innerHTML = generatePlayerProfileHTML(uiData.data);
+                        case 'results_list':
+                                uiComponentsDiv.innerHTML = generateResultsListHTML(uiData.data);
+                                break;
+                        case 'live_match_feed':
+                                uiComponentsDiv.innerHTML = generateLiveMatchFeedHTML(uiData.data);
+                                break;
+                        case 'match_lineups_display':
+                                uiComponentsDiv.innerHTML = generateMatchLineupsHTML(uiData.data);
+                                break;
+                        case 'top_performers_list':
+                                uiComponentsDiv.innerHTML = generateTopPerformersHTML(uiData.data);
+                                break;
+                        case 'player_profile_card':
+                                uiComponentsDiv.innerHTML = generatePlayerProfileHTML(uiData.data);
+                                break;
+                        case 'player_comparison_view':
+                                uiComponentsDiv.innerHTML = generatePlayerComparisonHTML(uiData.data);
+                                break;
+                        case 'term_explanation_box':
+                                uiComponentsDiv.innerHTML = generateTermExplanationHTML(uiData.data);
+                                break;
+                        case 'news_article_list':
+                                uiComponentsDiv.innerHTML = generateNewsListHTML(uiData.data);
+                                break;
+                        case 'suggestion_card':
+                                uiComponentsDiv.innerHTML = generateSuggestionCardHTML(uiData.data);
+                                break;
+                        case 'percentage_card':
+                                uiComponentsDiv.innerHTML = generatePercentageCardHTML(uiData.data);
+                                break;
+                        case 'generic_text':
+                        default:
+                            if (uiData.data && uiData.data.message) {
+                                uiComponentsDiv.innerHTML = `<p>${safeText(uiData.data.message)}</p>`;
+                            } else if (uiData.data && Object.keys(uiData.data).length > 0 && !(Object.keys(uiData.data).length === 1 && uiData.data.error) ) {
+                                    // Avoid showing simple {error: "..."} as pretty JSON
+                                uiComponentsDiv.innerHTML = `<h4>Generic Data Output:</h4><pre>${safeText(JSON.stringify(uiData.data, null, 2))}</pre>`;
+                            } else if (uiData.data && uiData.data.error) {
+                                    uiComponentsDiv.innerHTML = `<p class="error-message">Error from AI: ${safeText(uiData.data.error)}</p>`;
+                            }
+                            else {
+                                uiComponentsDiv.innerHTML = '<p>No specific UI data to display for this response.</p>';
+                            }
                             break;
-                    case 'player_comparison_view':
-                            uiComponentsDiv.innerHTML = generatePlayerComparisonHTML(uiData.data);
-                            break;
-                    case 'term_explanation_box':
-                            uiComponentsDiv.innerHTML = generateTermExplanationHTML(uiData.data);
-                            break;
-                    case 'news_article_list':
-                            uiComponentsDiv.innerHTML = generateNewsListHTML(uiData.data);
-                            break;
-                    case 'suggestion_card':
-                            uiComponentsDiv.innerHTML = generateSuggestionCardHTML(uiData.data);
-                            break;
-                    case 'percentage_card':
-                            uiComponentsDiv.innerHTML = generatePercentageCardHTML(uiData.data);
-                            break;
-                    case 'generic_text':
-                    default:
-                        if (uiData.data && uiData.data.message) {
-                            // Apply Markdown parsing here too if generic_text.data.message is used
-                            uiComponentsDiv.innerHTML = `<p>${parseMarkdown(uiData.data.message)}</p>`; // <-- CHANGE HERE
-                        } else if (uiData.data && Object.keys(uiData.data).length > 0 && !(Object.keys(uiData.data).length === 1 && uiData.data.error) ) {
-                                // Avoid showing simple {error: "..."} as pretty JSON
-                            uiComponentsDiv.innerHTML = `<h4>Generic Data Output:</h4><pre>${safeText(JSON.stringify(uiData.data, null, 2))}</pre>`;
-                        } else if (uiData.data && uiData.data.error) {
-                                uiComponentsDiv.innerHTML = `<p class="error-message">Error from AI: ${safeText(uiData.data.error)}</p>`;
-                        }
-                        else {
-                            uiComponentsDiv.innerHTML = '<p>No specific UI data to display for this response.</p>';
-                        }
-                        break;
-                }
+                    }
             } catch (renderError) {
                 console.error(`Error rendering component ${uiData.component_type}:`, renderError, "Data was:", uiData.data);
                 uiComponentsDiv.innerHTML = `<p class="error-message">Error displaying UI component for ${uiData.component_type}. Check console.</p>`;
             }
         }
 
-        // --- HTML Generation Functions (ALL YOUR ORIGINAL FUNCTIONS ARE HERE) ---
-        // Ensure safeText is called within these functions to prevent XSS if they are ever used.
-
         function safeText(text) {
-                if (text === null || typeof text === 'undefined') return 'N/A';
-                const div = document.createElement('div');
-                div.textContent = String(text);
-                return div.innerHTML;
+             if (text === null || typeof text === 'undefined') return 'N/A';
+             const div = document.createElement('div');
+             div.textContent = String(text);
+             return div.innerHTML;
         }
 
+        // All of your generate...HTML functions go here, unchanged.
+        // ... (e.g., generateH2HTableHTML, generateScheduleTableHTML, etc.)
         function generateH2HTableHTML(data) {
             if (!data || !data.h2h_summary) return '<p class="error-message">H2H data is incomplete.</p>';
             let html = '<h4>Head-to-Head Comparison</h4>';
