@@ -141,13 +141,13 @@
         .error-message { color: #ff8a80; /* Softer red */ font-style: italic; border: 1px solid #ff8a80; background-color: #3c2f2f; }
         
         /* New styling for structured bot messages to make them more modular */
-        /* --- START OF NEW/EDITED CSS --- */
         .bot-message-structured {
             background-color: #2a2c3b;
             color: #d0d0e0;
             margin-right: auto;
             padding: 15px; /* More padding for a card-like look */
-            border-bottom-left-radius: 5px;
+            border-radius: 18px; /* Use rounded corners */
+            border-bottom-left-radius: 5px; /* Keep one corner flat for continuity */
         }
 
         .bot-message-structured h3 { /* Use H3 for sport titles */
@@ -173,7 +173,7 @@
         .bot-message-structured ul li strong {
             color: #e0e0e0;
         }
-        /* --- END OF NEW/EDITED CSS --- */
+        /* End of new styling */
 
         #loadingIndicator { display: none; text-align: center; padding: 10px; color: #aaa; font-style: italic; }
 
@@ -268,7 +268,7 @@
         const uiComponentsDiv = document.getElementById('ui-components');
         const sendButton = document.getElementById('sendButton');
         const loadingIndicator = document.getElementById('loadingIndicator');
-        const openChatButton = document.getElementById('openChatButton'); // This ID no longer exists in the HTML body
+        const openChatButton = document.getElementById('openChatButton');
 
 
         // Generate a simple session ID for history tracking
@@ -282,7 +282,7 @@
                 sendMessage();
             }
         });
-        if(openChatButton){ // Make assistance button focus on input
+        if(openChatButton){
             openChatButton.addEventListener('click', () => {
                 userInput.focus();
             });
@@ -290,17 +290,13 @@
 
 
         // --- Core Functions ---
-        // EDITED: This function now accepts an optional parameter to render as HTML
         function appendMessage(content, sender = 'bot', isError = false, isHtml = false) {
             const msgDiv = document.createElement('div');
             
             if (isHtml) {
-                // Use innerHTML for trusted HTML content
                 msgDiv.innerHTML = content;
-                // Add new class for structured styling
                 msgDiv.classList.add('message', 'bot-message-structured');
             } else {
-                // Use textContent for plain text messages for security
                 msgDiv.textContent = content;
                 msgDiv.classList.add('message');
                 msgDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
@@ -313,60 +309,41 @@
             chatbox.scrollTop = chatbox.scrollHeight;
         }
 
-        // NEW FUNCTION: A function to parse your LLM text response into HTML
-        // This is the core logic to create the modular output you want.
+        // New function to parse Markdown-like text into HTML
         function parseAndFormatLLMResponse(text) {
-            const lines = text.split('\n');
-            let html = '';
-            let currentList = [];
-            let inList = false;
-
-            for (const line of lines) {
-                const trimmedLine = line.trim();
-
-                // Check for headings (e.g., "**Golf - Wyndham Championship**")
-                if (trimmedLine.startsWith('**') && trimmedLine.endsWith('**')) {
-                    if (inList) {
-                        html += `<ul>${currentList.map(item => `<li>${item}</li>`).join('')}</ul>`;
-                        currentList = [];
-                        inList = false;
-                    }
-                    html += `<h3>${safeText(trimmedLine.slice(2, -2))}</h3>`;
-                } 
-                // Check for bullet points (e.g., "* Description:")
-                else if (trimmedLine.startsWith('*')) {
-                    const content = safeText(trimmedLine.slice(1).trim());
-                    currentList.push(content);
-                    inList = true;
-                }
-                // Check for horizontal rules (e.g., "***")
-                else if (trimmedLine === '***') {
-                    if (inList) {
-                        html += `<ul>${currentList.map(item => `<li>${item}</li>`).join('')}</ul>`;
-                        currentList = [];
-                        inList = false;
-                    }
-                    html += '<hr>';
-                }
-                // Handle regular paragraphs
-                else if (trimmedLine !== '') {
-                     if (inList) {
-                        html += `<ul>${currentList.map(item => `<li>${item}</li>`).join('')}</ul>`;
-                        currentList = [];
-                        inList = false;
-                    }
-                    html += `<p>${safeText(trimmedLine)}</p>`;
-                }
+            // Check if the response contains any markdown markers
+            if (!text.includes('**') && !text.includes('*') && !text.includes('---')) {
+                // If not, just return as a plain paragraph
+                return `<p>${text}</p>`;
             }
 
-            // Close any remaining list
-            if (inList) {
-                html += `<ul>${currentList.map(item => `<li>${item}</li>`).join('')}</ul>`;
+            // Replace common markdown with HTML
+            let html = text
+                // Replace paragraphs and line breaks
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>')
+                // Replace horizontal rules
+                .replace(/\*\*\*+/g, '<hr>')
+                // Replace bold text with h3 for headings
+                .replace(/\*\*(.*?)\*\*/g, '<h3>$1</h3>')
+                // Replace bullet points with ul/li
+                .replace(/<br>\* /g, '</li><li>') // Fix list items
+                .replace(/\* /g, '</li><li>'); // Initial list items
+
+            // Clean up and add ul tags
+            html = `<ul><li>${html}</li></ul>`;
+            html = html.replace(/<ul><li><br>/g, '<ul><li>');
+            html = html.replace(/<br><\/li>/g, '</li>');
+            html = html.replace(/<li><br>/g, '</li><li>');
+
+            // Handle cases where a list starts immediately without a leading paragraph
+            if (html.startsWith("<ul><li>Here are") || html.startsWith("<ul><li>Hello")) {
+                html = html.replace("<ul><li>", "<p>");
+                html = html.replace("</li><ul>", "</p><ul>");
             }
 
             return html;
         }
-        // --- END OF NEW FUNCTION ---
 
         async function sendMessage() {
             const query = userInput.value.trim();
@@ -377,7 +354,6 @@
             userInput.disabled = true; 
             sendButton.disabled = true;
             loadingIndicator.style.display = 'block';
-            // uiComponentsDiv.innerHTML = ''; // Optionally clear UI immediately
 
             console.log(`Sending query to /chat: "${query}" for user_id: ${userId}`);
 
@@ -394,30 +370,25 @@
                     })
                 });
 
-                console.log("Fetch response status:", response.status, "OK:", response.ok);
-
                 if (!response.ok) {
-                        let errorDetail = `Server error! Status: ${response.status}`;
-                        try {
-                            const errorData = await response.json();
-                            console.error("Server error data:", errorData);
-                            errorDetail = errorData.detail || errorData.reply || JSON.stringify(errorData);
-                        } catch (parseError) {
-                            const textError = await response.text();
-                            console.error("Server error text (not JSON):", textError);
-                            errorDetail = textError || response.statusText || errorDetail;
-                        }
+                    let errorDetail = `Server error! Status: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        console.error("Server error data:", errorData);
+                        errorDetail = errorData.detail || errorData.reply || JSON.stringify(errorData);
+                    } catch (parseError) {
+                        const textError = await response.text();
+                        console.error("Server error text (not JSON):", textError);
+                        errorDetail = textError || response.statusText || errorDetail;
+                    }
                     throw new Error(errorDetail);
                 }
 
-                console.log("Attempting to parse JSON from response...");
                 const data = await response.json(); 
-                console.log("Data received and parsed from /chat:", data);
 
                 if (data && typeof data.reply !== 'undefined') {
-                    // EDITED: Now using the new `parseAndFormatLLMResponse` function
                     const formattedHtml = parseAndFormatLLMResponse(data.reply);
-                    appendMessage(formattedHtml, 'bot', false, true); // The last parameter `true` tells it to render as HTML
+                    appendMessage(formattedHtml, 'bot', false, true);
                 } else {
                     console.error("Parsed data is missing 'reply' field or data itself is null/undefined:", data);
                     appendMessage("Received an incomplete response structure from the bot.", 'bot', true);
@@ -442,85 +413,8 @@
             }
         }
 
-        // ... (rest of your functions for renderUiComponent, safeText, and the various generate...HTML functions remain unchanged)
-        
-        function renderUiComponent(uiData) {
-            // ... (rest of your renderUiComponent function is unchanged)
-            uiComponentsDiv.innerHTML = ''; 
-
-            if (!uiData || typeof uiData.component_type === 'undefined' || typeof uiData.data === 'undefined') {
-                console.warn("Received invalid or empty ui_data structure for rendering:", uiData);
-                uiComponentsDiv.innerHTML = '<p>No specific UI data to display for this response.</p>';
-                return;
-            }
-
-            console.log("Attempting to render UI Component Type:", uiData.component_type, "with data:", JSON.stringify(uiData.data, null, 2));
-
-            try {
-                    switch (uiData.component_type) {
-                        case 'h2h_comparison_table':
-                            uiComponentsDiv.innerHTML = generateH2HTableHTML(uiData.data);
-                            break;
-                        case 'match_schedule_table':
-                            uiComponentsDiv.innerHTML = generateScheduleTableHTML(uiData.data);
-                            break;
-                        case 'standings_table':
-                            uiComponentsDiv.innerHTML = generateStandingsTableHTML(uiData.data);
-                            break;
-                        case 'team_stats':
-                            uiComponentsDiv.innerHTML = generateTeamStatsHTML(uiData.data);
-                            break;
-                        case 'results_list':
-                                uiComponentsDiv.innerHTML = generateResultsListHTML(uiData.data);
-                                break;
-                        case 'live_match_feed':
-                                uiComponentsDiv.innerHTML = generateLiveMatchFeedHTML(uiData.data);
-                                break;
-                        case 'match_lineups_display':
-                                uiComponentsDiv.innerHTML = generateMatchLineupsHTML(uiData.data);
-                                break;
-                        case 'top_performers_list':
-                                uiComponentsDiv.innerHTML = generateTopPerformersHTML(uiData.data);
-                                break;
-                        case 'player_profile_card':
-                                uiComponentsDiv.innerHTML = generatePlayerProfileHTML(uiData.data);
-                                break;
-                        case 'player_comparison_view':
-                                uiComponentsDiv.innerHTML = generatePlayerComparisonHTML(uiData.data);
-                                break;
-                        case 'term_explanation_box':
-                                uiComponentsDiv.innerHTML = generateTermExplanationHTML(uiData.data);
-                                break;
-                        case 'news_article_list':
-                                uiComponentsDiv.innerHTML = generateNewsListHTML(uiData.data);
-                                break;
-                        case 'suggestion_card':
-                                uiComponentsDiv.innerHTML = generateSuggestionCardHTML(uiData.data);
-                                break;
-                        case 'percentage_card':
-                                uiComponentsDiv.innerHTML = generatePercentageCardHTML(uiData.data);
-                                break;
-                        case 'generic_text':
-                        default:
-                            if (uiData.data && uiData.data.message) {
-                                uiComponentsDiv.innerHTML = `<p>${safeText(uiData.data.message)}</p>`;
-                            } else if (uiData.data && Object.keys(uiData.data).length > 0 && !(Object.keys(uiData.data).length === 1 && uiData.data.error) ) {
-                                    // Avoid showing simple {error: "..."} as pretty JSON
-                                uiComponentsDiv.innerHTML = `<h4>Generic Data Output:</h4><pre>${safeText(JSON.stringify(uiData.data, null, 2))}</pre>`;
-                            } else if (uiData.data && uiData.data.error) {
-                                    uiComponentsDiv.innerHTML = `<p class="error-message">Error from AI: ${safeText(uiData.data.error)}</p>`;
-                            }
-                            else {
-                                uiComponentsDiv.innerHTML = '<p>No specific UI data to display for this response.</p>';
-                            }
-                            break;
-                    }
-            } catch (renderError) {
-                console.error(`Error rendering component ${uiData.component_type}:`, renderError, "Data was:", uiData.data);
-                uiComponentsDiv.innerHTML = `<p class="error-message">Error displaying UI component for ${uiData.component_type}. Check console.</p>`;
-            }
-        }
-
+        // --- HTML Generation Functions ---
+        // (These functions are unchanged from your original code)
         function safeText(text) {
              if (text === null || typeof text === 'undefined') return 'N/A';
              const div = document.createElement('div');
@@ -528,8 +422,6 @@
              return div.innerHTML;
         }
 
-        // All of your generate...HTML functions go here, unchanged.
-        // ... (e.g., generateH2HTableHTML, generateScheduleTableHTML, etc.)
         function generateH2HTableHTML(data) {
             if (!data || !data.h2h_summary) return '<p class="error-message">H2H data is incomplete.</p>';
             let html = '<h4>Head-to-Head Comparison</h4>';

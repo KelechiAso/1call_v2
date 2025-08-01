@@ -95,10 +95,8 @@ async def process_user_query(user_query: str, conversation_history: List[Dict[st
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-search-preview", # Use this model for its search capabilities
+            model="gpt-4o-search-preview", 
             messages=messages,
-            # Removed tools and tool_choice as we no longer want structured output via function calling
-            #temperature=0.2, # Keep temperature low for factual consistency
         )
 
         response_message = response.choices[0].message
@@ -112,7 +110,7 @@ async def process_user_query(user_query: str, conversation_history: List[Dict[st
                 r'http[s]?://[^\s]+|'                        # Bare URLs
                 r'\(\s*(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?\s*\)|'  # Parenthetical domains like (reuters.com)
                 r'\(Source:.*?\)|'                           # Parenthetical source references
-                r'\'(.*?)\'',                                # Citations like 'text'
+                r'\',             # Citations like
                 r'',
                 response_message.content,
                 flags=re.IGNORECASE | re.DOTALL # Ignore case and match across lines
